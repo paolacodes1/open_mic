@@ -28,6 +28,10 @@ venv/
 env/
 ENV/
 
+# Experiments and archive directories
+experiments/
+archive/
+
 # Whisper models (downloaded automatically)
 *.pt
 
