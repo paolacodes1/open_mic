@@ -53,6 +53,7 @@ class WhisperPermissionApp(rumps.App):
         self.recording_stream = None
         self.listener = None
         self.recording_timer = None
+        self.currently_pressed = set()
 
         # Setup callbacks
         self.menu["📋 Copy Last Text"].set_callback(self.copy_last_text)
@@ -81,19 +82,50 @@ class WhisperPermissionApp(rumps.App):
             print(f"Model loading error: {e}")
 
     def setup_hotkeys(self):
-        """Setup global hotkey listener"""
-        def on_hotkey_press():
-            if self.model:
-                self.toggle_recording()
+        """Setup global hotkey listener using regular Listener"""
+        def on_press(key):
+            try:
+                # Check if Control key is being held and Space is pressed
+                if hasattr(key, 'name') and key.name == 'space':
+                    # Check if ctrl is in currently_pressed
+                    if keyboard.Key.ctrl_l in self.currently_pressed or keyboard.Key.ctrl in self.currently_pressed:
+                        self.toggle_recording()
+            except Exception as e:
+                print(f"Key press error: {e}")
+
+        def on_release(key):
+            try:
+                if key in self.currently_pressed:
+                    self.currently_pressed.remove(key)
+            except:
+                pass
+
+        def on_press_track(key):
+            try:
+                self.currently_pressed.add(key)
+                on_press(key)
+            except Exception as e:
+                print(f"Track error: {e}")
 
         try:
-            if self.listener:
-                self.listener.stop()
+            # Initialize set to track pressed keys
+            self.currently_pressed = set()
 
-            self.listener = keyboard.GlobalHotKeys({
-                '<ctrl>+<space>': on_hotkey_press,
-            })
+            # Stop existing listener if any
+            if self.listener:
+                try:
+                    self.listener.stop()
+                except:
+                    pass
+                self.listener = None
+
+            # Create new listener with on_press and on_release
+            self.listener = keyboard.Listener(
+                on_press=on_press_track,
+                on_release=on_release
+            )
             self.listener.start()
+            print("✅ Hotkey listener started successfully")
 
         except Exception as e:
             print(f"Hotkey setup error: {e}")
@@ -116,6 +148,21 @@ class WhisperPermissionApp(rumps.App):
     def start_recording(self):
         """Start recording audio"""
         try:
+            # Make sure we're not already recording
+            if self.is_recording:
+                print("Already recording, ignoring start request")
+                return
+
+            # Clean up any existing stream first
+            if self.recording_stream:
+                try:
+                    self.recording_stream.stop()
+                    self.recording_stream.close()
+                except:
+                    pass
+                self.recording_stream = None
+
+            # Start fresh recording
             self.is_recording = True
             self.audio_chunks = []
             self.title = "🔴"
@@ -127,9 +174,10 @@ class WhisperPermissionApp(rumps.App):
                 dtype='float32'
             )
             self.recording_stream.start()
+            print("🎙️ Recording started")
 
-            # Auto-stop after 30 seconds
-            self.recording_timer = threading.Timer(30.0, self.auto_stop)
+            # Auto-stop after 5 minutes (300 seconds) to allow longer recordings
+            self.recording_timer = threading.Timer(300.0, self.auto_stop)
             self.recording_timer.start()
 
             rumps.notification(
@@ -140,6 +188,8 @@ class WhisperPermissionApp(rumps.App):
 
         except Exception as e:
             print(f"Recording error: {e}")
+            self.is_recording = False
+            self.title = "🎤"
 
     def stop_recording(self):
         """Stop recording and transcribe"""
@@ -150,20 +200,31 @@ class WhisperPermissionApp(rumps.App):
             self.is_recording = False
             self.title = "🟠"
 
+            # Cancel timer first
             if self.recording_timer:
                 self.recording_timer.cancel()
                 self.recording_timer = None
 
+            # Properly close audio stream
             if self.recording_stream:
-                self.recording_stream.stop()
-                self.recording_stream.close()
-                self.recording_stream = None
+                try:
+                    self.recording_stream.stop()
+                    self.recording_stream.close()
+                except Exception as stream_error:
+                    print(f"Stream cleanup error: {stream_error}")
+                finally:
+                    self.recording_stream = None
 
+            # Process audio if we have any
             if self.audio_chunks:
                 threading.Thread(target=self.transcribe_audio, daemon=True).start()
+            else:
+                # Reset icon if no audio was captured
+                self.title = "🎤"
 
         except Exception as e:
             print(f"Stop recording error: {e}")
+            self.title = "🎤"
 
     def auto_stop(self):
         """Auto-stop recording after timeout"""
