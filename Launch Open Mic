@@ -3,4 +3,4 @@ cd "$(dirname "$0")"
 export PYTHONHTTPSVERIFY=0
 pkill -9 -f "open_mic.py" >/dev/null 2>&1
 sleep 1
-nohup arch -arm64 /usr/local/bin/python3 open_mic.py > app_log.txt 2>&1 &
+nohup arch -arm64 ./whisper_env/bin/python3 open_mic.py > app_log.txt 2>&1 &

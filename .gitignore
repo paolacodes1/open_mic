@@ -32,6 +32,9 @@ ENV/
 experiments/
 archive/
 
+# Generated app bundle
+Open Mic.app/
+
 # Whisper models (downloaded automatically)
 *.pt
 
